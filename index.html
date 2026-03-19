@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Sistema Inmobiliaria</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css">
+</head>
+<body class="container mt-4">
+
+  <h2>Sistema de Cobros y Pagos</h2>
+
+  <!-- Formulario -->
+  <form id="calcForm" class="row g-3">
+
+    <!-- Bolsas -->
+    <div class="col-md-4">
+      <label class="form-label">Cantidad de bolsas (contrato)</label>
+      <input type="number" id="cantidadBolsas" class="form-control" placeholder="Ej: 127" title="Número de bolsas pactadas en el contrato" >
+    </div>
+    <div class="col-md-4">
+      <label class="form-label">Precio Bolsa 25kg</label>
+      <input type="number" id="cemento25" class="form-control" placeholder="Ej: 5900" title="Valor actual de la bolsa de 25kg">
+    </div>
+    <div class="col-md-4">
+      <label class="form-label">Precio Bolsa 50kg</label>
+      <input type="number" id="cemento50" class="form-control" placeholder="Ej: 11000" title="Valor actual de la bolsa de 50kg">
+    </div>
+
+    <!-- Dólares -->
+    <div class="col-md-4">
+      <label class="form-label">Cantidad de dólares (contrato)</label>
+      <input type="number" id="cantidadDolares" class="form-control" placeholder="Ej: 1000" title="Número de dólares pactados en el contrato">
+    </div>
+    <div class="col-md-4">
+      <label class="form-label">Dólar Blue Venta</label>
+      <input type="number" id="dolarBlue" class="form-control" placeholder="Ej: 1200" title="Cotización dólar blue (manual o automática)">
+    </div>
+
+    <!-- Administración -->
+    <div class="col-md-4">
+      <label class="form-label">% Adm Comprador</label>
+      <select id="admComprador" class="form-select" title="Porcentaje de administración aplicado al comprador">
+        <option value="0">0%</option>
+        <option value="0.05">5%</option>
+        <option value="0.10">10%</option>
+        <option value="0.15">15%</option>
+      </select>
+    </div>
+    <div class="col-md-4">
+      <label class="form-label">% Adm Vendedor</label>
+      <select id="admVendedor" class="form-select" title="Porcentaje de administración aplicado al vendedor">
+        <option value="0">0%</option>
+        <option value="0.05">5%</option>
+        <option value="0.10">10%</option>
+        <option value="0.15">15%</option>
+      </select>
+    </div>
+
+    <!-- Fecha -->
+    <div class="col-md-4">
+  <label class="form-label">Fecha de vencimiento (fija)</label>
+  <input type="text" id="fechaVencimiento" class="form-control" value="10 de cada mes" readonly>
+</div>
+
+<div class="col-md-4">
+  <label class="form-label">Fecha actual</label>
+  <input type="text" id="fechaActual" class="form-control" readonly>
+</div>
+
+
+    <div class="col-12">
+      <button type="submit" class="btn btn-primary">Calcular</button>
+    </div>
+  </form>
+
+  <!-- Historial -->
+  <h3 class="mt-4">Historial</h3>
+  <table class="table table-bordered" id="historial">
+    <thead>
+      <tr>
+        <th>Fecha</th>
+        <th>Cant. Bolsas</th>
+        <th>Precio 25kg</th>
+        <th>Precio 50kg</th>
+        <th>Cant. Dólares</th>
+        <th>Dólar Blue</th>
+        <th>CP Total</th>
+        <th>Comprador</th>
+        <th>Vendedor</th>
+        <th>Recargo</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+<button class="btn btn-warning" onclick="toggleRedondeoUSD()">Redondear dólares</button>
+
+  <button class="btn btn-success" onclick="descargarPDF()">Descargar PDF</button>
+
+  <!-- Librería PDF -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+ <script>
+  // Array para guardar todas las operaciones en el historial
+  const historial = [];
+
+  // Actualizar dólar automáticamente desde API (opcional)
+  async function actualizarDolarBlue(){
+    try {
+      const res = await fetch("https://api.bluelytics.com.ar/v2/latest");
+      const data = await res.json();
+      document.getElementById("dolarBlue").value = data.blue.value_sell;
+    } catch (error) {
+      console.error("Error al obtener dólar blue:", error);
+    }
+  }
+  actualizarDolarBlue();
+
+  // Mostrar fecha actual automáticamente en el campo
+  document.addEventListener("DOMContentLoaded", () => {
+    document.getElementById("fechaActual").value = new Date().toLocaleDateString("es-AR");
+  });
+
+  // Cálculo principal al enviar el formulario
+  document.getElementById("calcForm").addEventListener("submit", function(e){
+    e.preventDefault();
+
+    // Datos ingresados
+    const cantidadBolsas = parseFloat(document.getElementById("cantidadBolsas").value) || 0;
+    const cemento25 = parseFloat(document.getElementById("cemento25").value) || 0;
+    const cemento50 = parseFloat(document.getElementById("cemento50").value) || 0;
+    const cantidadDolares = parseFloat(document.getElementById("cantidadDolares").value) || 0;
+    const dolarBlue = parseFloat(document.getElementById("dolarBlue").value) || 0;
+
+    // CP bolsas: se calcula según el precio ingresado
+    let cpBolsas = 0;
+    if (cemento25 > 0 && cantidadBolsas > 0) cpBolsas = cantidadBolsas * cemento25;
+    if (cemento50 > 0 && cantidadBolsas > 0) cpBolsas = cantidadBolsas * cemento50;
+
+    // CP dólares
+    let cpDolar = cantidadDolares * dolarBlue;
+
+    // CP total
+    const cp = cpBolsas + cpDolar;
+
+    // Porcentajes de administración
+    const admC = parseFloat(document.getElementById("admComprador").value);
+    const admV = parseFloat(document.getElementById("admVendedor").value);
+
+    // Fecha actual
+    const fechaHoy = new Date();
+    const diaHoy = fechaHoy.getDate();
+
+    // Recargo si pasa del día 10
+    let diasAtraso = diaHoy > 10 ? diaHoy - 10 : 0;
+    let recargo = cp * (diasAtraso * 0.01);
+
+    // Cálculo comprador y vendedor
+    let comprador = cp * (admC) ;
+    let vendedor = cp * (admV);
+
+    // Guardar en historial
+    historial.push({
+      fecha: fechaHoy.toLocaleDateString("es-AR"),
+      cantidadBolsas,
+      cemento25,
+      cemento50,
+      cantidadDolares,
+      dolarBlue,
+      cp,
+      comprador,
+      vendedor,
+      recargo
+    });
+    renderHistorial();
+  });
+
+  // Bandera para activar/desactivar redondeo de dólares
+  let redondearUSD = false;
+
+  function toggleRedondeoUSD(){
+    redondearUSD = !redondearUSD;
+    renderHistorial();
+  }
+
+  // Función para formatear números en pesos
+  function formatoPesos(valor){
+    return "$ " + valor.toLocaleString("es-AR", {minimumFractionDigits: 2, maximumFractionDigits: 2});
+  }
+
+  // Función para formatear dólares
+  function formatoUSD(valor){
+    let monto = valor;
+    if(redondearUSD){
+      monto = Math.ceil(monto / 100) * 100; // redondeo hacia arriba al múltiplo de 100
+    }
+    return "U$D " + monto.toLocaleString("en-US");
+  }
+
+  // Renderizar historial con formato
+  function renderHistorial(){
+    const tbody = document.querySelector("#historial tbody");
+    tbody.innerHTML = "";
+    historial.forEach(op => {
+      // CP en pesos o dólares
+      let cpPesos = op.cemento25 > 0 || op.cemento50 > 0 ? formatoPesos(op.cp) : "-";
+      let cpUSD = op.cantidadDolares > 0 ? formatoUSD(op.cp) : "-";
+
+      tbody.innerHTML += `
+        <tr>
+          <td>${op.fecha}</td>
+          <td>${op.cantidadBolsas}</td>
+          <td>${formatoPesos(op.cemento25)}</td>
+          <td>${formatoPesos(op.cemento50)}</td>
+          <td>${op.cantidadDolares}</td>
+          <td>${formatoUSD(op.dolarBlue)}</td>
+          <td>${cpPesos !== "-" ? cpPesos : cpUSD}</td>
+          <td>${formatoPesos(op.comprador)}</td>
+          <td>${formatoPesos(op.vendedor)}</td>
+          <td>${formatoPesos(op.recargo)}</td>
+        </tr>`;
+    });
+  }
+
+  // Descargar historial en PDF
+  function descargarPDF(){
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    doc.text("Historial de operaciones", 10, 10);
+    let y = 20;
+    historial.forEach(op => {
+      doc.text(
+        `${op.fecha} | Bolsas: ${op.cantidadBolsas} | 25kg: ${op.cemento25} | 50kg: ${op.cemento50} | Dólares: ${op.cantidadDolares} | Dólar: ${op.dolarBlue} | CP: ${op.cp} | Comprador: ${op.comprador} | Vendedor: ${op.vendedor} | Recargo: ${op.recargo}`,
+        10, y
+      );
+      y += 10;
+      if (y > 280) { // salto de página si se llena
+        doc.addPage();
+        y = 20;
+      }
+    });
+    doc.save("historial.pdf");
+  }
+</script>
+
+</body>
+</html>
